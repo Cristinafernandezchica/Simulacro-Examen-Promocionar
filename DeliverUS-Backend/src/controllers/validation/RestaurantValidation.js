@@ -1,6 +1,24 @@
 import { check } from 'express-validator'
-import { checkFileIsImage, checkFileMaxSize } from './FileValidationHelper.js'
-const maxFileSize = 2000000 // around 2Mb
+import { checkFileIsImage, checkFileMaxSize } from './FileValidationHelper.js' // around 2Mb
+// SOLUCIÓN
+import { Restaurant } from '../../models/models.js'
+const maxFileSize = 2000000
+
+// SOLUCIÓN -->  Comprobar que hay un solo restaurante promocionado
+const OneRestaurantPromoted = async (ownerId, promotedValue) => {
+  if (promotedValue) {
+    try {
+      const promotedRestaurants = await Restaurant.findAll({ where: { userId: ownerId, promoted: true } })
+      if (promotedRestaurants.length !== 0) {
+        return Promise.reject(new Error('You can only promote one restaurant at a time'))
+      }
+    } catch (err) {
+      return Promise.reject(new Error(err))
+    }
+  }
+
+  return Promise.resolve('ok')
+}
 
 const create = [
   check('name').exists().isString().isLength({ min: 1, max: 255 }).trim(),
@@ -24,7 +42,13 @@ const create = [
   }).withMessage('Please upload an image with format (jpeg, png).'),
   check('logo').custom((value, { req }) => {
     return checkFileMaxSize(req, 'logo', maxFileSize)
-  }).withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB')
+  }).withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB'),
+  // SOLUCIÓN
+  check('promoted')
+    .custom(async (value, { req }) => {
+      return OneRestaurantPromoted(req.user.id, value)
+    })
+    .withMessage('You can only promote one restaurant at a time')
 ]
 const update = [
   check('name').exists().isString().isLength({ min: 1, max: 255 }).trim(),
@@ -48,7 +72,13 @@ const update = [
   }).withMessage('Please upload an image with format (jpeg, png).'),
   check('logo').custom((value, { req }) => {
     return checkFileMaxSize(req, 'logo', maxFileSize)
-  }).withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB')
+  }).withMessage('Maximum file size of ' + maxFileSize / 1000000 + 'MB'),
+  // SOLUCIÓN
+  check('promoted')
+    .custom(async (value, { req }) => {
+      return OneRestaurantPromoted(req.user.id, value)
+    })
+    .withMessage('You can only promote one restaurant at a time')
 ]
 
 export { create, update }

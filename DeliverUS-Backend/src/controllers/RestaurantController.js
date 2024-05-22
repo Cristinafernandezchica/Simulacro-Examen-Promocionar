@@ -1,4 +1,4 @@
-import { Restaurant, Product, RestaurantCategory, ProductCategory } from '../models/models.js'
+import { Restaurant, Product, RestaurantCategory, ProductCategory, sequelizeSession } from '../models/models.js'
 
 const index = async function (req, res) {
   try {
@@ -10,7 +10,8 @@ const index = async function (req, res) {
         model: RestaurantCategory,
         as: 'restaurantCategory'
       },
-        order: [[{ model: RestaurantCategory, as: 'restaurantCategory' }, 'name', 'ASC']]
+        // SOLUCIÓN  -->  Ordenamiento por promoción
+        order: [['promoted', 'DESC'], [{ model: RestaurantCategory, as: 'restaurantCategory' }, 'name', 'ASC']]
       }
     )
     res.json(restaurants)
@@ -25,6 +26,8 @@ const indexOwner = async function (req, res) {
       {
         attributes: { exclude: ['userId'] },
         where: { userId: req.user.id },
+        // SOLUCIÓN  -->  Ordenamiento por promoción
+        order: [['promoted', 'DESC']],
         include: [{
           model: RestaurantCategory,
           as: 'restaurantCategory'
@@ -95,12 +98,44 @@ const destroy = async function (req, res) {
   }
 }
 
+// SOLUCIÓN
+const promote = async function (req, res) {
+  const t = await sequelizeSession.transaction()
+  try {
+    // Busca si existe algún restaurante en promoción
+    const existingPromotedRestaurant = await Restaurant.findOne({ where: { userId: req.user.id, promoted: true } })
+    // Si existe
+    if (existingPromotedRestaurant) {
+      // Pone el restaurante que estaba promocionado a false (lo quita de promoción)
+      await Restaurant.update(
+        { promoted: false },
+        { where: { id: existingPromotedRestaurant.id } },
+        { transaction: t }
+      )
+      // Pone el nuevo restaurante que queremos promocionar en promoción
+      await Restaurant.update(
+        { promoted: true },
+        { where: { id: req.params.restaurantId } },
+        { transaction: t }
+      )
+      // Si ambas operaciones se realizan con éxito, se hace el commit
+      await t.commit()
+      const updatedRestaurant = await Restaurant.findByPk(req.params.restaurantId)
+      res.json(updatedRestaurant)
+    }
+  } catch (error) {
+    await t.rollback()
+    res.status(500).send(error)
+  }
+}
+
 const RestaurantController = {
   index,
   indexOwner,
   create,
   show,
   update,
-  destroy
+  destroy,
+  promote
 }
 export default RestaurantController
